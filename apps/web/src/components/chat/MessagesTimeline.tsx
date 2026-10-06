@@ -2571,7 +2571,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
         {canExpand && expandedBody ? (
           <CollapsiblePanel>
             <div
-              className="mt-1 ms-7 cursor-default border-s border-border/45 ps-3 pt-0.5"
+              className="mt-1 ms-7 cursor-default border-s border-border/45 ps-3 pb-2 pt-0.5"
               onClick={stopRowToggle}
               onPointerDown={stopRowToggle}
             >
