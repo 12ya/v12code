@@ -4,7 +4,10 @@ import {
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
 } from "@t3tools/contracts";
 
-const files = new Map<string, { base64: string; deleted: boolean; text?: string }>();
+const files = new Map<
+  string,
+  { base64: string; deleted: boolean; text?: string; mimeType?: string }
+>();
 
 const clipboard = vi.hoisted(() => ({
   hasImageAsync: vi.fn(),
@@ -58,6 +61,10 @@ vi.mock("expo-file-system", () => ({
 
     get exists(): boolean {
       return files.has(this.uri) && files.get(this.uri)?.deleted === false;
+    }
+
+    get type(): string {
+      return files.get(this.uri)?.mimeType ?? "";
     }
 
     async base64(): Promise<string> {
@@ -191,6 +198,40 @@ describe("oversized pasted images", () => {
 describe("native pasted image cleanup", () => {
   beforeEach(() => {
     files.clear();
+  });
+
+  it("preserves the reported image type of extensionless Android content URIs", async () => {
+    const uri = "content://media/external/images/media/42";
+    files.set(uri, { base64: "aGVsbG8=", deleted: false, mimeType: "image/jpeg" });
+
+    const attachments = await convertPastedImagesToAttachments({ uris: [uri], existingCount: 0 });
+
+    expect(attachments).toEqual([
+      expect.objectContaining({
+        name: "pasted-image.jpeg",
+        mimeType: "image/jpeg",
+        dataUrl: "data:image/jpeg;base64,aGVsbG8=",
+        previewUri: uri,
+      }),
+    ]);
+    expect(files.get(uri)?.deleted).toBe(false);
+  });
+
+  it("renders an unsupported Android image format to JPEG before attaching it", async () => {
+    const uri = "content://media/external/images/media/43";
+    files.set(uri, { base64: "b3JpZ2luYWw=", deleted: false, mimeType: "image/heic" });
+    manipulator.state.sourceSize = { width: 100, height: 100 };
+
+    const attachments = await convertPastedImagesToAttachments({ uris: [uri], existingCount: 0 });
+
+    expect(attachments).toEqual([
+      expect.objectContaining({
+        name: "pasted-image.jpeg",
+        mimeType: "image/jpeg",
+        dataUrl: "data:image/jpeg;base64,cmVuZGVyZWQ=",
+      }),
+    ]);
+    expect(files.get(uri)?.deleted).toBe(false);
   });
 
   it("converts owned files to data-backed previews and deletes the source", async () => {
