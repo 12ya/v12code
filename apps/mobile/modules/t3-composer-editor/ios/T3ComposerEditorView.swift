@@ -205,6 +205,16 @@ private final class ComposerTextView: UITextView {
     return super.canPaste(itemProviders)
   }
 
+  override func paste(itemProviders: [NSItemProvider]) {
+    guard isEditable, !isReadOnly else { return }
+    if !itemProviders.isEmpty,
+       itemProviders.allSatisfy({ $0.canLoadObject(ofClass: UIImage.self) }) {
+      loadImages(from: itemProviders)
+      return
+    }
+    super.paste(itemProviders: itemProviders)
+  }
+
   override func paste(_ sender: Any?) {
     guard !isReadOnly else {
       return
