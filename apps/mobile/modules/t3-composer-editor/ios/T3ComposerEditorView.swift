@@ -195,6 +195,16 @@ private final class ComposerTextView: UITextView {
     return super.canPerformAction(action, withSender: sender)
   }
 
+  override func canPaste(_ itemProviders: [NSItemProvider]) -> Bool {
+    guard isEditable, !isReadOnly else { return false }
+    // UIKit checks canPaste before forwarding a drag to UITextDropDelegate.
+    if !itemProviders.isEmpty,
+       itemProviders.allSatisfy({ $0.canLoadObject(ofClass: UIImage.self) }) {
+      return true
+    }
+    return super.canPaste(itemProviders)
+  }
+
   override func paste(_ sender: Any?) {
     guard !isReadOnly else {
       return
