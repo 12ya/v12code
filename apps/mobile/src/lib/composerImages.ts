@@ -710,8 +710,7 @@ export async function convertPastedImagesToAttachments(input: {
         mimeType,
         sizeBytes,
         dataUrl: `data:${mimeType};base64,${base64}`,
-        previewUri:
-          temporaryUris.length > 0 ? `data:${mimeType};base64,${base64}` : (fitted?.uri ?? uri),
+        previewUri: `data:${mimeType};base64,${base64}`,
       });
     } catch (error) {
       console.warn("Failed to read pasted image", uri, error);

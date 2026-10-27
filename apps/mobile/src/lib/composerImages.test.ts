@@ -213,7 +213,7 @@ describe("native pasted image cleanup", () => {
         name: "pasted-image.jpeg",
         mimeType: "image/jpeg",
         dataUrl: "data:image/jpeg;base64,aGVsbG8=",
-        previewUri: uri,
+        previewUri: "data:image/jpeg;base64,aGVsbG8=",
       }),
     ]);
     expect(files.get(uri)?.deleted).toBe(false);
