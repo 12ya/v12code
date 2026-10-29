@@ -1243,6 +1243,55 @@ describe("mobile composer drafts", () => {
     expect(getComposerDraftSnapshot(key).attachments).toHaveLength(2);
   });
 
+  it("stores inline image bytes once and restores live and archived previews", async () => {
+    const key = "environment-1:inline-preview";
+    const image = {
+      id: "inline-image",
+      type: "image" as const,
+      name: "photo.png",
+      mimeType: "image/png",
+      sizeBytes: 3,
+      dataUrl: "data:image/png;base64,YWJj",
+      previewUri: "data:image/png;base64,YWJj",
+    };
+    const fileBacked = {
+      ...image,
+      id: "file-image",
+      fileUri: "file:///documents/photo.png",
+      previewUri: "file:///documents/photo.png",
+    };
+    const externalPreview = { ...image, id: "external-image", previewUri: "file:///picked.png" };
+    const attachments = [image, fileBacked, externalPreview];
+    await waitForComposerDraftsLoaded();
+    appendComposerDraftAttachments(key, attachments);
+    appAtomRegistry.set(composerCloudDraftsAtom, {
+      accountId: null,
+      signedOut: {
+        account: {
+          drafts: { [key]: { text: "Archived", attachments: [image] } },
+          queuedMessages: [],
+        },
+      },
+    });
+    await flushComposerDrafts();
+
+    const document = JSON.parse(composerDraftFileMocks.getDocument());
+    expect(document.drafts[key].attachments[0]).not.toHaveProperty("previewUri");
+    expect(document.signedOutDrafts.account.drafts[key].attachments[0]).not.toHaveProperty(
+      "previewUri",
+    );
+    expect(document.drafts[key].attachments.slice(1)).toEqual([fileBacked, externalPreview]);
+
+    appAtomRegistry.set(composerDraftsAtom, {});
+    appAtomRegistry.set(composerCloudDraftsAtom, { accountId: null, signedOut: {} });
+    resetComposerDraftsLoadState();
+    await waitForComposerDraftsLoaded();
+    expect(getComposerDraftSnapshot(key).attachments).toEqual(attachments);
+    expect(
+      appAtomRegistry.get(composerCloudDraftsAtom).signedOut.account?.drafts[key]?.attachments,
+    ).toEqual([image]);
+  });
+
   it.each(["file", "image"] as const)(
     "keeps signed-out %s attachments through cleanup and restart, and restores only the owning account",
     async (type) => {

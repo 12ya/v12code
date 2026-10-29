@@ -21,6 +21,7 @@ import {
   type ScopedThreadRef,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import * as SchemaGetter from "effect/SchemaGetter";
 import { useEffect } from "react";
 import { AsyncResult, Atom, type AtomRegistry } from "effect/reactivity";
 import * as Option from "effect/Option";
@@ -42,7 +43,10 @@ import {
 } from "@t3tools/shared/composerContextReferences";
 import { imageMimeType } from "@t3tools/shared/image";
 import { videoMimeType } from "@t3tools/shared/video";
-import { DraftComposerAttachmentSchema } from "../lib/composer-image-schema";
+import {
+  DraftComposerFileAttachmentSchema,
+  DraftComposerImageAttachmentSchema,
+} from "../lib/composer-image-schema";
 import {
   composerAttachmentFileReferenceKey,
   isComposerAttachmentFileRetained,
@@ -423,10 +427,46 @@ const PersistedComposerContextSchema = Schema.Struct({
   records: ForwardCompatibleArray(ComposerContextRecord),
 });
 
+const PersistedComposerImageSchema = DraftComposerImageAttachmentSchema.mapFields((fields) => ({
+  ...fields,
+  previewUri: Schema.optional(Schema.String),
+}))
+  .check(
+    Schema.makeFilter(
+      ({ previewUri, fileUri, dataUrl }) =>
+        previewUri !== undefined ||
+        (fileUri === undefined && dataUrl?.startsWith("data:") === true) ||
+        "Image attachment has no preview.",
+    ),
+  )
+  .pipe(
+    Schema.decodeTo(Schema.toType(DraftComposerImageAttachmentSchema), {
+      decode: SchemaGetter.transform((image) => ({
+        ...image,
+        previewUri: image.previewUri ?? image.dataUrl!,
+      })),
+      encode: SchemaGetter.transform((image) => ({
+        ...image,
+        previewUri:
+          image.fileUri === undefined &&
+          image.dataUrl?.startsWith("data:") === true &&
+          image.previewUri === image.dataUrl
+            ? undefined
+            : image.previewUri,
+      })),
+    }),
+  );
+
+const PersistedComposerAttachmentSchema = Schema.Union([
+  PersistedComposerImageSchema,
+  DraftComposerFileAttachmentSchema,
+]);
+const encodePersistedComposerAttachment = Schema.encodeSync(PersistedComposerAttachmentSchema);
+
 const ComposerDraftSchema = Schema.Struct({
   text: Schema.String,
   context: Schema.optional(PersistedComposerContextSchema),
-  attachments: Schema.Array(DraftComposerAttachmentSchema),
+  attachments: Schema.Array(PersistedComposerAttachmentSchema),
   importedShareIds: Schema.optional(Schema.Array(Schema.String)),
   modelSelection: Schema.optional(ModelSelectionSchema),
   runtimeMode: Schema.optional(RuntimeModeSchema),
@@ -753,7 +793,9 @@ async function writePersistedComposerState(
     const file = await getComposerDraftsFile();
     operation = "encode";
     const nonEmptyDrafts = Object.fromEntries(
-      Object.entries(drafts).filter(([, draft]) => !isEmptyDraft(draft)),
+      Object.entries(drafts)
+        .filter(([, draft]) => !isEmptyDraft(draft))
+        .map(([key, draft]) => [key, encodeComposerDraft(draft)]),
     );
     const document = {
       schemaVersion: COMPOSER_DRAFTS_SCHEMA_VERSION,
@@ -769,7 +811,12 @@ async function writePersistedComposerState(
               Object.entries(cloudDrafts.signedOut).map(([id, saved]) => [
                 id,
                 {
-                  drafts: saved.drafts,
+                  drafts: Object.fromEntries(
+                    Object.entries(saved.drafts).map(([key, draft]) => [
+                      key,
+                      encodeComposerDraft(draft),
+                    ]),
+                  ),
                   queuedMessages: saved.queuedMessages.map(encodeQueuedThreadMessage),
                 },
               ]),
@@ -788,6 +835,15 @@ async function writePersistedComposerState(
       cause,
     });
   }
+}
+
+function encodeComposerDraft(draft: ComposerDraft) {
+  return {
+    ...draft,
+    attachments: draft.attachments.map((attachment) =>
+      encodePersistedComposerAttachment(attachment),
+    ),
+  };
 }
 
 /** Propagates write failures so callers can decide whether to restart. */
