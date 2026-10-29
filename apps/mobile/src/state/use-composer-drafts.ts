@@ -423,8 +423,6 @@ const PersistedComposerContextSchema = Schema.Struct({
   records: ForwardCompatibleArray(ComposerContextRecord),
 });
 
-const encodePersistedComposerAttachment = Schema.encodeSync(PersistedComposerAttachmentSchema);
-
 const ComposerDraftSchema = Schema.Struct({
   text: Schema.String,
   context: Schema.optional(PersistedComposerContextSchema),
@@ -755,9 +753,7 @@ async function writePersistedComposerState(
     const file = await getComposerDraftsFile();
     operation = "encode";
     const nonEmptyDrafts = Object.fromEntries(
-      Object.entries(drafts)
-        .filter(([, draft]) => !isEmptyDraft(draft))
-        .map(([key, draft]) => [key, encodeComposerDraft(draft)]),
+      Object.entries(drafts).filter(([, draft]) => !isEmptyDraft(draft)),
     );
     const document = {
       schemaVersion: COMPOSER_DRAFTS_SCHEMA_VERSION,
@@ -773,12 +769,7 @@ async function writePersistedComposerState(
               Object.entries(cloudDrafts.signedOut).map(([id, saved]) => [
                 id,
                 {
-                  drafts: Object.fromEntries(
-                    Object.entries(saved.drafts).map(([key, draft]) => [
-                      key,
-                      encodeComposerDraft(draft),
-                    ]),
-                  ),
+                  drafts: saved.drafts,
                   queuedMessages: saved.queuedMessages.map(encodeQueuedThreadMessage),
                 },
               ]),
@@ -797,15 +788,6 @@ async function writePersistedComposerState(
       cause,
     });
   }
-}
-
-function encodeComposerDraft(draft: ComposerDraft) {
-  return {
-    ...draft,
-    attachments: draft.attachments.map((attachment) =>
-      encodePersistedComposerAttachment(attachment),
-    ),
-  };
 }
 
 /** Propagates write failures so callers can decide whether to restart. */

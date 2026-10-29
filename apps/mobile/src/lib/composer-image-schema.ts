@@ -57,15 +57,8 @@ const PersistedComposerImageSchema = DraftComposerImageAttachmentSchema.mapField
         ...image,
         previewUri: image.previewUri ?? image.dataUrl!,
       })),
-      encode: SchemaGetter.transform((image) => ({
-        ...image,
-        previewUri:
-          image.fileUri === undefined &&
-          image.dataUrl?.startsWith("data:") === true &&
-          image.previewUri === image.dataUrl
-            ? undefined
-            : image.previewUri,
-      })),
+      // Rollbacks can load an older bundle whose image schema requires previewUri.
+      encode: SchemaGetter.transform((image) => image),
     }),
   );
 

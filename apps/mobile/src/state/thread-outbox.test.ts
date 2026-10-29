@@ -14,6 +14,7 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import { AtomRegistry } from "effect/reactivity";
+import * as Schema from "effect/Schema";
 import * as RpcClientError from "effect/rpc/RpcClientError";
 import * as Socket from "effect/socket/Socket";
 import { onTestFinished, vi } from "vite-plus/test";
@@ -84,8 +85,10 @@ import {
   resolveThreadOutboxFailureAction,
   resolveQueuedThreadSettings,
   shouldRetryThreadOutboxDelivery,
+  QueuedThreadMessageSchema,
   type QueuedThreadMessage,
 } from "./thread-outbox-model";
+import { DraftComposerAttachmentSchema } from "../lib/composer-image-schema";
 import { createThreadOutboxManager, ThreadOutboxManagerError } from "./thread-outbox-manager";
 import {
   expoThreadOutboxStorage,
@@ -138,7 +141,7 @@ describe("thread outbox", () => {
     ).toEqual(message);
   });
 
-  it("stores inline queued images once and restores their previews on reload", async () => {
+  it("keeps rollback preview fields and reads compact queued images", async () => {
     onTestFinished(() => outboxFiles.clear());
     const image = {
       id: "inline-image",
@@ -161,8 +164,20 @@ describe("thread outbox", () => {
     const raw = outboxFiles.get("preview-message.json");
     if (typeof raw !== "string") throw new Error("Queued message was not persisted");
     const stored = JSON.parse(raw);
-    expect(stored.attachments[0]).not.toHaveProperty("previewUri");
-    expect(stored.attachments.slice(1)).toEqual([fileBacked, distinctPreview]);
+    const legacySchema = QueuedThreadMessageSchema.mapFields((fields) => ({
+      ...fields,
+      attachments: Schema.Array(DraftComposerAttachmentSchema),
+    }));
+    expect(Schema.decodeUnknownSync(legacySchema)(stored)).toEqual({
+      ...message,
+      schemaVersion: 3,
+    });
+    await expect(expoThreadOutboxStorage.load()).resolves.toEqual({
+      messages: [message],
+      errors: [],
+    });
+    delete stored.attachments[0].previewUri;
+    outboxFiles.set("preview-message.json", JSON.stringify(stored));
     await expect(expoThreadOutboxStorage.load()).resolves.toEqual({
       messages: [message],
       errors: [],

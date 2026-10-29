@@ -12,6 +12,7 @@ import {
   v2ThreadShell,
 } from "../../../../packages/client-runtime/src/state/orchestrationV2TestFixtures";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
 import { afterEach, describe, expect, it } from "@effect/vitest";
 import {
@@ -166,6 +167,7 @@ vi.mock("../features/sharing/incoming-share-storage", () => ({
 }));
 
 import type { DraftComposerAttachment } from "../lib/composerImages";
+import { DraftComposerAttachmentSchema } from "../lib/composer-image-schema";
 import {
   collectComposerContextReferences,
   formatComposerContextReference,
@@ -1243,7 +1245,7 @@ describe("mobile composer drafts", () => {
     expect(getComposerDraftSnapshot(key).attachments).toHaveLength(2);
   });
 
-  it("stores inline image bytes once and restores live and archived previews", async () => {
+  it("keeps rollback preview fields and reads compact live and archived drafts", async () => {
     const key = "environment-1:inline-preview";
     const image = {
       id: "inline-image",
@@ -1285,18 +1287,17 @@ describe("mobile composer drafts", () => {
     await flushComposerDrafts();
 
     const document = JSON.parse(composerDraftFileMocks.getDocument());
-    expect(document.drafts[key].attachments[0]).not.toHaveProperty("previewUri");
-    expect(document.signedOutDrafts.account.drafts[key].attachments[0]).not.toHaveProperty(
-      "previewUri",
+    const decodeLegacyImages = Schema.decodeUnknownSync(
+      Schema.Array(DraftComposerAttachmentSchema),
     );
-    expect(document.drafts[key].attachments.slice(1)).toEqual([fileBacked, externalPreview]);
-    expect(document.signedOutDrafts.account.queuedMessages[0].attachments[0]).not.toHaveProperty(
-      "previewUri",
-    );
-    expect(document.signedOutDrafts.account.queuedMessages[0].attachments.slice(1)).toEqual([
-      fileBacked,
-      externalPreview,
+    expect(document.schemaVersion).toBe(1);
+    expect(decodeLegacyImages(document.drafts[key].attachments)).toEqual(attachments);
+    expect(decodeLegacyImages(document.signedOutDrafts.account.drafts[key].attachments)).toEqual([
+      image,
     ]);
+    expect(
+      decodeLegacyImages(document.signedOutDrafts.account.queuedMessages[0].attachments),
+    ).toEqual(attachments);
 
     appAtomRegistry.set(composerDraftsAtom, {});
     appAtomRegistry.set(composerCloudDraftsAtom, { accountId: null, signedOut: {} });
@@ -1309,6 +1310,14 @@ describe("mobile composer drafts", () => {
     expect(appAtomRegistry.get(composerCloudDraftsAtom).signedOut.account?.queuedMessages).toEqual([
       queued,
     ]);
+
+    delete document.drafts[key].attachments[0].previewUri;
+    delete document.signedOutDrafts.account.drafts[key].attachments[0].previewUri;
+    delete document.signedOutDrafts.account.queuedMessages[0].attachments[0].previewUri;
+    const compact = decodePersistedComposerState(document);
+    expect(compact.drafts[key]?.attachments).toEqual(attachments);
+    expect(compact.cloudDrafts.signedOut.account?.drafts[key]?.attachments).toEqual([image]);
+    expect(compact.cloudDrafts.signedOut.account?.queuedMessages).toEqual([queued]);
   });
 
   it.each(["file", "image"] as const)(
