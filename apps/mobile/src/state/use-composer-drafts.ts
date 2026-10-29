@@ -21,7 +21,6 @@ import {
   type ScopedThreadRef,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import * as SchemaGetter from "effect/SchemaGetter";
 import { useEffect } from "react";
 import { AsyncResult, Atom, type AtomRegistry } from "effect/reactivity";
 import * as Option from "effect/Option";
@@ -43,10 +42,7 @@ import {
 } from "@t3tools/shared/composerContextReferences";
 import { imageMimeType } from "@t3tools/shared/image";
 import { videoMimeType } from "@t3tools/shared/video";
-import {
-  DraftComposerFileAttachmentSchema,
-  DraftComposerImageAttachmentSchema,
-} from "../lib/composer-image-schema";
+import { PersistedComposerAttachmentSchema } from "../lib/composer-image-schema";
 import {
   composerAttachmentFileReferenceKey,
   isComposerAttachmentFileRetained,
@@ -427,40 +423,6 @@ const PersistedComposerContextSchema = Schema.Struct({
   records: ForwardCompatibleArray(ComposerContextRecord),
 });
 
-const PersistedComposerImageSchema = DraftComposerImageAttachmentSchema.mapFields((fields) => ({
-  ...fields,
-  previewUri: Schema.optional(Schema.String),
-}))
-  .check(
-    Schema.makeFilter(
-      ({ previewUri, fileUri, dataUrl }) =>
-        previewUri !== undefined ||
-        (fileUri === undefined && dataUrl?.startsWith("data:") === true) ||
-        "Image attachment has no preview.",
-    ),
-  )
-  .pipe(
-    Schema.decodeTo(Schema.toType(DraftComposerImageAttachmentSchema), {
-      decode: SchemaGetter.transform((image) => ({
-        ...image,
-        previewUri: image.previewUri ?? image.dataUrl!,
-      })),
-      encode: SchemaGetter.transform((image) => ({
-        ...image,
-        previewUri:
-          image.fileUri === undefined &&
-          image.dataUrl?.startsWith("data:") === true &&
-          image.previewUri === image.dataUrl
-            ? undefined
-            : image.previewUri,
-      })),
-    }),
-  );
-
-const PersistedComposerAttachmentSchema = Schema.Union([
-  PersistedComposerImageSchema,
-  DraftComposerFileAttachmentSchema,
-]);
 const encodePersistedComposerAttachment = Schema.encodeSync(PersistedComposerAttachmentSchema);
 
 const ComposerDraftSchema = Schema.Struct({

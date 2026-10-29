@@ -1,4 +1,5 @@
 import * as Schema from "effect/Schema";
+import * as SchemaGetter from "effect/SchemaGetter";
 import { EnvironmentId, PastedTextAttachmentSource } from "@t3tools/contracts";
 
 export const DraftComposerImageAttachmentSchema = Schema.Struct({
@@ -35,5 +36,40 @@ export const DraftComposerFileAttachmentSchema = Schema.Struct({
 
 export const DraftComposerAttachmentSchema = Schema.Union([
   DraftComposerImageAttachmentSchema,
+  DraftComposerFileAttachmentSchema,
+]);
+
+const PersistedComposerImageSchema = DraftComposerImageAttachmentSchema.mapFields((fields) => ({
+  ...fields,
+  previewUri: Schema.optional(Schema.String),
+}))
+  .check(
+    Schema.makeFilter(
+      ({ previewUri, fileUri, dataUrl }) =>
+        previewUri !== undefined ||
+        (fileUri === undefined && dataUrl?.startsWith("data:") === true) ||
+        "Image attachment has no preview.",
+    ),
+  )
+  .pipe(
+    Schema.decodeTo(Schema.toType(DraftComposerImageAttachmentSchema), {
+      decode: SchemaGetter.transform((image) => ({
+        ...image,
+        previewUri: image.previewUri ?? image.dataUrl!,
+      })),
+      encode: SchemaGetter.transform((image) => ({
+        ...image,
+        previewUri:
+          image.fileUri === undefined &&
+          image.dataUrl?.startsWith("data:") === true &&
+          image.previewUri === image.dataUrl
+            ? undefined
+            : image.previewUri,
+      })),
+    }),
+  );
+
+export const PersistedComposerAttachmentSchema = Schema.Union([
+  PersistedComposerImageSchema,
   DraftComposerFileAttachmentSchema,
 ]);

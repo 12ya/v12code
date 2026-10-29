@@ -1262,6 +1262,15 @@ describe("mobile composer drafts", () => {
     };
     const externalPreview = { ...image, id: "external-image", previewUri: "file:///picked.png" };
     const attachments = [image, fileBacked, externalPreview];
+    const queued = {
+      environmentId: EnvironmentId.make("environment-1"),
+      threadId: ThreadId.make("thread-1"),
+      messageId: MessageId.make("queued-image"),
+      commandId: CommandId.make("queued-image-command"),
+      text: "Send later",
+      attachments,
+      createdAt: "2026-09-06T12:00:00.000Z",
+    };
     await waitForComposerDraftsLoaded();
     appendComposerDraftAttachments(key, attachments);
     appAtomRegistry.set(composerCloudDraftsAtom, {
@@ -1269,7 +1278,7 @@ describe("mobile composer drafts", () => {
       signedOut: {
         account: {
           drafts: { [key]: { text: "Archived", attachments: [image] } },
-          queuedMessages: [],
+          queuedMessages: [queued],
         },
       },
     });
@@ -1281,6 +1290,13 @@ describe("mobile composer drafts", () => {
       "previewUri",
     );
     expect(document.drafts[key].attachments.slice(1)).toEqual([fileBacked, externalPreview]);
+    expect(document.signedOutDrafts.account.queuedMessages[0].attachments[0]).not.toHaveProperty(
+      "previewUri",
+    );
+    expect(document.signedOutDrafts.account.queuedMessages[0].attachments.slice(1)).toEqual([
+      fileBacked,
+      externalPreview,
+    ]);
 
     appAtomRegistry.set(composerDraftsAtom, {});
     appAtomRegistry.set(composerCloudDraftsAtom, { accountId: null, signedOut: {} });
@@ -1290,6 +1306,9 @@ describe("mobile composer drafts", () => {
     expect(
       appAtomRegistry.get(composerCloudDraftsAtom).signedOut.account?.drafts[key]?.attachments,
     ).toEqual([image]);
+    expect(appAtomRegistry.get(composerCloudDraftsAtom).signedOut.account?.queuedMessages).toEqual([
+      queued,
+    ]);
   });
 
   it.each(["file", "image"] as const)(

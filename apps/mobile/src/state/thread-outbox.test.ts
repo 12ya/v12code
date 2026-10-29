@@ -137,6 +137,39 @@ describe("thread outbox", () => {
       decodeQueuedThreadMessage(JSON.parse(JSON.stringify(encodeQueuedThreadMessage(message)))),
     ).toEqual(message);
   });
+
+  it("stores inline queued images once and restores their previews on reload", async () => {
+    onTestFinished(() => outboxFiles.clear());
+    const image = {
+      id: "inline-image",
+      type: "image" as const,
+      name: "photo.png",
+      mimeType: "image/png",
+      sizeBytes: 3,
+      dataUrl: "data:image/png;base64,YWJj",
+      previewUri: "data:image/png;base64,YWJj",
+    };
+    const fileBacked = { ...image, id: "file-image", fileUri: "file:///documents/photo.png" };
+    const distinctPreview = { ...image, id: "distinct-image", previewUri: "file:///preview.png" };
+    const message = {
+      ...queuedMessage({ messageId: "preview-message", createdAt: "2026-09-06T12:00:00.000Z" }),
+      attachments: [image, fileBacked, distinctPreview],
+    };
+
+    await expoThreadOutboxStorage.write(message);
+
+    const raw = outboxFiles.get("preview-message.json");
+    if (typeof raw !== "string") throw new Error("Queued message was not persisted");
+    const stored = JSON.parse(raw);
+    expect(stored.attachments[0]).not.toHaveProperty("previewUri");
+    expect(stored.attachments.slice(1)).toEqual([fileBacked, distinctPreview]);
+    await expect(expoThreadOutboxStorage.load()).resolves.toEqual({
+      messages: [message],
+      errors: [],
+    });
+    expect(decodeQueuedThreadMessage({ ...message, schemaVersion: 1 })).toEqual(message);
+  });
+
   it.each(["read", "json", "schema"] as const)(
     "recovers usable messages without permitting cleanup after a record %s failure",
     async (failure) => {
